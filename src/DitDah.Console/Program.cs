@@ -2,7 +2,14 @@
 using System.Reactive.Linq;
 using System.Text;
 
-var inputs = Observable.Create<char>((observer) =>
+const ConsoleKey dotKey = ConsoleKey.J;
+const ConsoleKey dashKey = ConsoleKey.K;
+
+Console.WriteLine("Welcome to DitDah! Quick manual");
+Console.WriteLine(
+    "Press key \"j\" for dot, press \"k\" for dash, press \"spacebar\" for space, press \"Enter\" to submit.");
+
+var inputs = Observable.Create<ConsoleKey>((observer) =>
     {
         var cts = new CancellationTokenSource();
 
@@ -18,26 +25,33 @@ var inputs = Observable.Create<char>((observer) =>
                         break;
                     }
 
-                    observer.OnNext(input.KeyChar);
+                    observer.OnNext(input.Key);
                 }
             }
         );
-        
+
         keyboardReader.Start();
 
         return Disposable.Create(cts.Cancel);
     }
 ).Publish().RefCount();
 
-var sb = new StringBuilder();
+var morseSymbols = inputs
+    .Where(c => c is dotKey or dashKey or ConsoleKey.Spacebar)
+    .Select(c => c switch
+        {
+            dotKey => '.',
+            dashKey => '-',
+            _ => ' '
+        }
+    );
 
-inputs.Subscribe(
-    onNext: c =>
-    {
-        sb.Append(c);
-        Console.Write(c);
-    },
+var sb = new StringBuilder();
+morseSymbols.Subscribe(onNext: c => sb.Append(c));
+
+morseSymbols.Subscribe(
+    onNext: Console.Write,
     onCompleted: () => Console.WriteLine("\nGot your message!")
 );
 
-inputs.Subscribe(c => Console.Write($"B:{c} "));
+//TODO: Sound for morse.
