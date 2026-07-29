@@ -66,23 +66,18 @@ var inputs = Observable.Create<ConsoleKey>((observer) =>
                 {
                     var input = Console.ReadKey(intercept: true);
 
-                    if (input.Key == ConsoleKey.Enter)
-                    {
-                        observer.OnCompleted();
-                        break;
-                    }
-
                     observer.OnNext(input.Key);
                 }
             }
         );
 
+        keyboardReader.IsBackground = true;
         keyboardReader.Start();
 
         return Disposable.Create(cts.Cancel);
     }
     // Publish.RefCount allows to share the same observable sequence among multiple subscribers, and output will be deterministic.
-).Publish().RefCount();
+).TakeUntil(c => c == ConsoleKey.Enter).Publish().RefCount();
 
 // Second publisher - publishes only morse symbols from pressing "j" or "k" keys
 var morseSymbols = inputs
@@ -112,10 +107,11 @@ var output = letters.Merge(words).Scan(string.Empty, (acc, c) => acc + c);
 
 var renderTop = Console.CursorTop;
 using var done = new ManualResetEventSlim();
+var scheduler = new EventLoopScheduler();
 
 using var render = morseKey
     .CombineLatest(output, (keyingLine, messageLine) => (keyingLine, messageLine))
-    .ObserveOn(new EventLoopScheduler())
+    .ObserveOn(scheduler)
     .Subscribe(
         onNext: aggr =>
         {
@@ -132,6 +128,8 @@ using var render = morseKey
             done.Set();
         }
     );
+
+using var subscriptions = new CompositeDisposable { render, scheduler, done };
 
 done.Wait();
 
