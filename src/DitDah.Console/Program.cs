@@ -1,4 +1,5 @@
-﻿using System.Reactive.Disposables;
+﻿using System.Reactive.Concurrency;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 
 const ConsoleKey dotKey = ConsoleKey.J;
@@ -101,15 +102,38 @@ var words = morseSymbols
     .Throttle(wordPause)
     .Select(_ => ' ');
 
+var morseKey = morseSymbols.Select(c => (char?)c)
+    .Merge(letters.Select(_ => (char?)null))
+    .Scan(string.Empty, (acc, c) => c is null ? string.Empty : acc + c);
+
 // Fifth publisher and subscriber of third and fourth publishers - listen to letters or whitespace and then aggregates
 // via scan to string.
 var output = letters.Merge(words).Scan(string.Empty, (acc, c) => acc + c);
 
-// First publisher of fifth publisher - output result string and on finish outputs final messsage.
-output.Subscribe(
-    onNext: msg => { Console.Write("\r"); Console.Write(msg); },
-    onCompleted: () => Console.WriteLine("\nGot your message!")
-);
+var renderTop = Console.CursorTop;
+using var done = new ManualResetEventSlim();
+
+using var render = morseKey
+    .CombineLatest(output, (keyingLine, messageLine) => (keyingLine, messageLine))
+    .ObserveOn(new EventLoopScheduler())
+    .Subscribe(
+        onNext: aggr =>
+        {
+            var width = Console.WindowWidth - 1;
+            Console.SetCursorPosition(0, renderTop);
+            Console.Write($"keying: {aggr.keyingLine}".PadRight(width));
+            Console.SetCursorPosition(0, renderTop + 1);
+            Console.Write($"message: {aggr.messageLine}");
+        },
+        onCompleted: () =>
+        {
+            Console.SetCursorPosition(0, renderTop + 2);
+            Console.WriteLine("Got your message!");
+            done.Set();
+        }
+    );
+
+done.Wait();
 
 //TODO: Sound for morse.
 
